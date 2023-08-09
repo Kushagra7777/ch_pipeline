@@ -36,8 +36,8 @@ def unix_to_localtime(unix_time):
     return utc_time.astimezone(pytz.timezone("Canada/Pacific"))
 
 
-def sun_coord(unix_time, deg=True):
-    """Calculate the coordinates of the sun at a given time.
+def jupiter_coord(unix_time, deg=True):
+    """Calculate the coordinates of the jupiter at a given time.
 
     Parameters
     ----------
@@ -53,7 +53,7 @@ def sun_coord(unix_time, deg=True):
     coord : np.ndarray
         2D array of type `float` with shape `(ntime, 4)` that contains
         the hour angle, declination, altitude, and azimuth of the
-        sun at each time.
+        jupiter at each time.
 
     """
 
@@ -65,11 +65,11 @@ def sun_coord(unix_time, deg=True):
 
     planets = ephemeris.skyfield_wrapper.ephemeris
     # planets = skyfield.api.load('de421.bsp')
-    sun = planets["sun"]
+    jup = planets["Jupiter Barycenter"]
 
     observer = ephemeris.chime.skyfield_obs()
 
-    apparent = observer.at(skyfield_time).observe(sun).apparent()
+    apparent = observer.at(skyfield_time).observe(jup).apparent()
 
     radec = apparent.cirs_radec(epoch=skyfield_time)
     coord[:, 0] = radec[0].radians
@@ -799,24 +799,24 @@ class SolarCleanN2(task.SingleTask):
         return sstream
 
 
-class SolarBeamform(task.SingleTask):
-    """Estimate the average primary beam by beamforming on the Sun.
+class JupiterBeamform(task.SingleTask):
+    """Estimate the average primary beam by beamforming on the Jupiter.
 
-    Formerly called SunCalibration.
+    Formerly called JupiterCalibration.
 
     Attributes
     ----------
     ymax: float, default 10.0
         Do not include baselines with N-S separation
-        greater than ymax to avoid resolving out the Sun.
+        greater than ymax to avoid resolving out the Jupiter.
         Default is 10.0 (meters)
     exclude_intercyl : bool, default True
         Exclude intercylinder baselines to avoid resolving
-        out the Sun. Default is True
+        out the Jupiter. Default is True
     sep_cyl : bool, default False
         Do not average over cylinder pairs when beamforming.
-        If False, will yield a single measurement of the sun.
-        If True will yield a separate measurement of the sun
+        If False, will yield a single measurement of the Jupiter.
+        If True will yield a separate measurement of the Jupiter
         for each cylinder pair.  Default is False.
     """
 
@@ -836,8 +836,8 @@ class SolarBeamform(task.SingleTask):
 
         Returns
         -------
-        sunstream : containers.FormedBeamTime
-            Formed beam at the location of the sun.
+        jupitertream : containers.FormedBeamTime
+            Formed beam at the location of the jupiter.
         """
 
         # Determine the time axis
@@ -851,14 +851,14 @@ class SolarBeamform(task.SingleTask):
 
         lat = np.radians(ephemeris.CHIMELATITUDE)
 
-        # Get position of sun at every time sample (in radians)
-        sun_pos = sun_coord(time, deg=False)
+        # Get position of jupiter at every time sample (in radians)
+        jup_pos = jupiter_coord(time, deg=False)
 
-        ha = sun_pos[:, 0]
-        dec = sun_pos[:, 1]
-        el = sun_pos[:, 2]
+        ha = jup_pos[:, 0]
+        dec = jup_pos[:, 1]
+        el = jup_pos[:, 2]
 
-        # Only process times when sun is above the horizon
+        # Only process times when jupiter is above the horizon
         valid_time = np.flatnonzero(el > 0.0)
 
         if valid_time.size == 0:
@@ -894,7 +894,7 @@ class SolarBeamform(task.SingleTask):
             self.log.info(
                 "Could not find appropriate reference inputs for "
                 f"{ninvalid:0.0f} stacked products.  Ignoring these "
-                "products in solar beamform."
+                "products in jupiter beamform."
             )
 
         # Extract the typical products for each stack.
@@ -952,11 +952,11 @@ class SolarBeamform(task.SingleTask):
 
         ncyl = ucyl.size
         object_id = np.empty(ncyl, dtype=[("source", "<U16"), ("cylinder", "<U3")])
-        object_id["source"] = "sun"
+        object_id["source"] = "jupiter"
         object_id["cylinder"] = ucyl
 
         # Create output container
-        sunstream = containers.FormedBeamTime(
+        jupiterstream = containers.FormedBeamTime(
             time=time[valid_time],
             object_id=object_id,
             pol=upol,
@@ -966,16 +966,16 @@ class SolarBeamform(task.SingleTask):
             comm=sstream.comm,
         )
 
-        sunstream.redistribute("freq")
-        sunstream.beam[:] = 0.0
-        sunstream.weight[:] = 0.0
+        jupiterstream.redistribute("freq")
+        jupiterstream.beam[:] = 0.0
+        jupiterstream.weight[:] = 0.0
 
         # Dereference datasets
         vis_local = sstream.vis[:].local_array
         weight_local = sstream.weight[:].local_array
 
-        vis_out = sunstream.beam[:].local_array
-        weight_out = sunstream.weight[:].local_array
+        vis_out = jupiterstream.beam[:].local_array
+        weight_out = jupiterstream.weight[:].local_array
 
         nfreq = vis_local.shape[0]
 
@@ -993,11 +993,11 @@ class SolarBeamform(task.SingleTask):
 
                 vis = np.where(conj_pol, vis.conj(), vis)
 
-                # Calculate the phase that the sun would have using the fringestop routine
-                sun_vis = tools.fringestop_phase(ha[ti], lat, dec[ti], u, v)
+                # Calculate the phase that the jupiter would have using the fringestop routine
+                jup_vis = tools.fringestop_phase(ha[ti], lat, dec[ti], u, v)
 
-                # Fringestop to the sun
-                vs = weight * vis * sun_vis
+                # Fringestop to the jupiter
+                vs = weight * vis * jup_vis
 
                 # Accumulate the fringestopped visibilities based on what group their
                 # baseline belongs to (as specified by index)
@@ -1013,7 +1013,7 @@ class SolarBeamform(task.SingleTask):
                 weight_out[:, :, fi, tt] = sds.reshape(ncyl, npol)
 
         # Return the beamformed data
-        return sunstream
+        return jupiterstream
 
 
 class SolarClean(task.SingleTask):
