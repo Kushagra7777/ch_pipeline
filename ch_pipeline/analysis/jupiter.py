@@ -89,7 +89,7 @@ def jupiter_coord(unix_time, deg=True):
     return coord
 
 
-class SolarGrouper(task.SingleTask):
+class JupiterGrouper(task.SingleTask):
     """Group individual timestreams together into whole solar days.
 
     Attributes
@@ -102,7 +102,7 @@ class SolarGrouper(task.SingleTask):
     min_span = config.Property(proptype=float, default=2.0)
 
     def __init__(self):
-        super(SolarGrouper, self).__init__()
+        super(JupiterGrouper, self).__init__()
         self._timestream_list = []
         self._current_day = None
 
